@@ -1,16 +1,25 @@
 Data augmentation:
 * H, V, 90, 180, 270, T, T',
 * scaling
-* noise?(wih dropout that might not be necessary)
-* Feature Standardization
+* Feature Standardization - StdNormalize
 * whitening
 * more rotation
 * shift translate - 15px doable
 feed inc_angle
+Use RandomChoiceCompose to apply transpose
+Use RandomChoiceRotate istead of "range rotate"
+feed GMM
+Multiple kernel sizes at each conv layer
+Address class imbalance. Although test set may have a different balance
+Wrapper net for enssembling
+majority vote then confidence adjustment
+Replace NA with average of ships
 Try the reconstruction idea from Capsules paper
 Think and try mean and std before and after logistic
 Derive a formula for sensibly adjusting guesses according to confidence
 Batchnorm layer settings? Remove to see if it helps
+Logging and ploting very important
+
 
 weird images:
 3907
@@ -22,3 +31,7 @@ Two peaks in histogram
 
 dout: 0.1 [Epoch: 247 loss: 0.2920 | acc: 0.8704 | vloss: 0.3403 | vacc: 0.8625 ]
 dout: 0.2 [Epoch: 249 loss: 0.3447 | acc: 0.8465 | vloss: 0.3259 | vacc: 0.8656 ]
+dout: 0.2 - no rotation [Epoch: 249 loss: 0.2550 | acc: 0.8963 | vloss: 0.3291 | vacc: 0.8607 ]
+dout: 0.2 - no rotation 16-64 [Epoch: 249 loss: 0.2529 | acc: 0.8941 | vloss: 0.2576 | vacc: 0.9062 ]
+dout 0.2, 45deg, first and seconf conv are two, sigmoid after mean and std
+[Epoch: 249 loss: 0.3682 | acc: 0.8608 | vloss: 0.3038 | vadjloss: 0.2850 | vacc: 0.8656 | vacc_m: 0.8844 ]
