@@ -6,6 +6,7 @@ class Net(nn.Module):
     def __init__(self):
         super(Net, self).__init__()
         drop_p = 0.2
+        drop_p_fc = 0.15
         self.batch = nn.BatchNorm2d(2)
         self.conv00 = nn.Conv2d(2, 16, kernel_size=3, padding=1)
         self.conv01 = nn.Conv2d(2, 16, kernel_size=5, padding=2)
@@ -16,17 +17,17 @@ class Net(nn.Module):
         self.dout1 = nn.Dropout2d(drop_p)
         self.pool = nn.MaxPool2d(2, 2)
         self.conv2 = nn.Conv2d(64, 64, kernel_size=3, padding=1)
-        self.dout2 = nn.Dropout2d(drop_p)
-        self.fc1 = nn.Linear(64 * 9 * 9 + 1, 1000)
-        self.dout3 = nn.Dropout(drop_p)
+        self.dout2 = nn.Dropout2d(drop_p_fc)
+        self.fc1 = nn.Linear(64 * 9 * 9 + 100, 1000)
+        self.dout3 = nn.Dropout(drop_p_fc)
         self.fc2 = nn.Linear(1000, 200)
-        self.dout4 = nn.Dropout(drop_p)
+        self.dout4 = nn.Dropout(drop_p_fc)
         self.fc3 = nn.Linear(200, 1)
 
     def forward(self, x, angel):
         x = self.batch(x)
         x = self.pool(F.relu(self.dout0(torch.cat((self.conv00(x), self.conv01(x)), 1))))
-        x = self.pool(F.relu(self.dout0(torch.cat((self.conv10(x), self.conv11(x)), 1))))
+        x = self.pool(F.relu(self.dout1(torch.cat((self.conv10(x), self.conv11(x)), 1))))
         x = self.pool(F.relu(self.dout2(self.conv2(x))))
         x = x.view(x.size(0), -1)
         x = torch.cat((x, angel), 1)
@@ -36,10 +37,8 @@ class Net(nn.Module):
         return x
 
 
-
-dropout = [0.3, 0.3, 0.3, 0.3, 0.2, 0.2, 0.2, 0.2, 0.1]
-
 class CNNClassifier(torch.nn.Module):
+    dropout = [0.3, 0.3, 0.3, 0.3, 0.2, 0.2, 0.2, 0.2, 0.1]
     def __init__(self, img_size, img_ch, kernel_size, pool_size, n_out):
         super(CNNClassifier, self).__init__()
         self.img_size = img_size

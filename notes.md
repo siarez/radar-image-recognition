@@ -5,20 +5,18 @@ Data augmentation:
 * whitening
 * more rotation
 * shift translate - 15px doable
-feed inc_angle
+feed inc_angle one hot encoded. Create a hist
 Use RandomChoiceCompose to apply transpose
 Use RandomChoiceRotate istead of "range rotate"
 feed GMM
-Multiple kernel sizes at each conv layer
 Address class imbalance. Although test set may have a different balance
-Wrapper net for enssembling
-majority vote then confidence adjustment
+
 Replace NA with average of ships
 Try the reconstruction idea from Capsules paper
-Think and try mean and std before and after logistic
-Derive a formula for sensibly adjusting guesses according to confidence
 Batchnorm layer settings? Remove to see if it helps
-Logging and ploting very important
+Train on whole data before running on test data
+save model parameters
+
 
 
 weird images:

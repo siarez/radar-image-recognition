@@ -15,12 +15,18 @@ except ImportError:
 class Logger(object):
     def __init__(self, log_dir):
         """Create a summary writer logging to log_dir."""
-        self.writer = tf.summary.FileWriter(os.path.join(log_dir, time.strftime("%Y-%m-%d-%H-%M-%S")))
+        self.dir = os.path.join(log_dir, time.strftime("%Y-%m-%d-%H-%M-%S"))
+        self.writer = tf.summary.FileWriter(self.dir)
 
     def scalar_summary(self, tag, value, step):
         """Log a scalar variable."""
         summary = tf.Summary(value=[tf.Summary.Value(tag=tag, simple_value=value)])
         self.writer.add_summary(summary, step)
+
+    def text_log(self, text, filename):
+        f = open(os.path.join(self.dir, filename), "w")
+        f.write(text)
+        f.close()
 
     def image_summary(self, tag, images, step):
         """Log a list of images."""
