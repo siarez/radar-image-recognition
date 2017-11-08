@@ -5,7 +5,8 @@ Data augmentation:
 * whitening
 * more rotation
 * shift translate - 15px doable
-feed inc_angle one hot encoded. Create a hist
+Remove max and mix inputs in the angle encoding. I think we'll be back to before having the angle in performance.
+Concat angle as channel to image and feed to conv net.F
 Use RandomChoiceCompose to apply transpose
 Use RandomChoiceRotate istead of "range rotate"
 feed GMM

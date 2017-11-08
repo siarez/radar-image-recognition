@@ -23,9 +23,11 @@ class Logger(object):
         summary = tf.Summary(value=[tf.Summary.Value(tag=tag, simple_value=value)])
         self.writer.add_summary(summary, step)
 
-    def text_log(self, text, filename):
+    def text_log(self, texts, filename):
         f = open(os.path.join(self.dir, filename), "w")
-        f.write(text)
+        for text in texts:
+            f.write(text)
+            f.write("\n")
         f.close()
 
     def image_summary(self, tag, images, step):

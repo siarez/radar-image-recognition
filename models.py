@@ -5,8 +5,8 @@ import torch.nn.functional as F
 class Net(nn.Module):
     def __init__(self):
         super(Net, self).__init__()
-        drop_p = 0.2
-        drop_p_fc = 0.15
+        drop_p = 0.25
+        drop_p_fc = 0.5
         self.batch = nn.BatchNorm2d(2)
         self.conv00 = nn.Conv2d(2, 16, kernel_size=3, padding=1)
         self.conv01 = nn.Conv2d(2, 16, kernel_size=5, padding=2)
@@ -24,7 +24,15 @@ class Net(nn.Module):
         self.dout4 = nn.Dropout(drop_p_fc)
         self.fc3 = nn.Linear(200, 1)
 
-    def forward(self, x, angel):
+    def forward(self, x, angel, trials=1):
+        if trials > 1:
+            # repeating each sample `trials` times to get confidence intervals by applying dropout.
+            self.train()  # model needs to be in training mode for dropout layers to work
+            if len(x.size()) == 3:
+                x.data.unsqueeze_(0)
+            x = torch.stack([x] * trials, 1).view(x.size()[0] * trials, 2, 75, 75)
+            angel = torch.stack([angel] * trials, 1).view(angel.size()[0] * trials, 100)
+
         x = self.batch(x)
         x = self.pool(F.relu(self.dout0(torch.cat((self.conv00(x), self.conv01(x)), 1))))
         x = self.pool(F.relu(self.dout1(torch.cat((self.conv10(x), self.conv11(x)), 1))))
@@ -37,7 +45,7 @@ class Net(nn.Module):
         return x
 
 
-class CNNClassifier(torch.nn.Module):
+class CNNClassifier(nn.Module):
     dropout = [0.3, 0.3, 0.3, 0.3, 0.2, 0.2, 0.2, 0.2, 0.1]
     def __init__(self, img_size, img_ch, kernel_size, pool_size, n_out):
         super(CNNClassifier, self).__init__()

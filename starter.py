@@ -1,65 +1,20 @@
-import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import torch
-from torch import nn
-import torch.nn.functional as F
 from torch.autograd import Variable
 from torch.optim import Adam
-from torch.utils.data import DataLoader, ConcatDataset
-from torchvision import transforms as tv_trans
-from torchsample import transforms, TensorDataset
+from torch.utils.data import DataLoader
+from torchsample import transforms
 from tqdm import tqdm
-from models import Net, CNNClassifier
-from multi_dataset import MultiDataset
+from models import Net
+from utils import ScalarEncoder, accuracy, AverageMeter, make_dataset
 from logger import Logger
 import os.path
 
-class ScalarEncoder:
-    def __init__(self, num_of_bins, min, max):
-        self.num_bins = num_of_bins
-        self.min = min
-        self.max = max
-        self.multiplier = (self.num_bins - 2)  / (self.max - self.min)
-        self.lookup = np.eye(self.num_bins)
-
-    def encode(self, input_arr):
-        """
-        One-hot encodes 1D array of scalars . Scalars that fall bellow the `min` will have the same encodeing.
-        Same is true for the ones that land above `max`
-        :param input_arr: 1D array of scalars
-        :return: 2D one array of size ( len(`input_arr`) , `num_of_bins`)
-        """
-        scaled_input = np.array((input_arr - self.min) * self.multiplier).astype(np.int)
-        scaled_input = np.minimum(scaled_input, self.num_bins - 1)
-        scaled_input = np.maximum(scaled_input, 0)
-        endoded =  self.lookup[scaled_input, :]
-        return endoded
-
-encoder = ScalarEncoder(100, 30, 45)
 
 run_infer = True
 
 data = pd.read_json('train.json')
-
-if run_infer:
-    test = pd.read_json('test.json')
-    test['band_1'] = test['band_1'].apply(lambda x: np.array(x).reshape(75, 75))
-    test['band_2'] = test['band_2'].apply(lambda x: np.array(x).reshape(75, 75))
-    test['inc_angle'] = pd.to_numeric(test['inc_angle'], errors='coerce')
-    band_1_test = np.concatenate([im for im in test['band_1']]).reshape(-1, 75, 75)
-    band_2_test = np.concatenate([im for im in test['band_2']]).reshape(-1, 75, 75)
-    inc_angle_test = np.nan_to_num(test['inc_angle'].values)
-    inc_angle_test = encoder.encode(inc_angle_test)
-    #inc_angle_test = np.zeros(test['inc_angle'].values.shape)
-    full_img_test = np.stack([band_1_test, band_2_test], axis=1)
-    test_imgs = torch.from_numpy(full_img_test).float().cuda()
-    test_angles = torch.from_numpy(inc_angle_test).float()
-    test_dataset_img = TensorDataset(test_imgs, torch.zeros(test_imgs.shape[0]))
-    test_dataset_angles = TensorDataset(test_angles, None)
-    test_dataset = MultiDataset((test_dataset_img, test_dataset_angles))
-
-
 data['band_1'] = data['band_1'].apply(lambda x: np.array(x).reshape(75, 75))
 data['band_2'] = data['band_2'].apply(lambda x: np.array(x).reshape(75, 75))
 data['inc_angle'] = pd.to_numeric(data['inc_angle'], errors='coerce')
@@ -67,101 +22,31 @@ data['inc_angle'] = pd.to_numeric(data['inc_angle'], errors='coerce')
 train = data.sample(frac=0.8)
 val = data[~data.isin(train)].dropna()
 
-# Concat Bands into (N, 2, 75, 75) images
-band_1_tr = np.concatenate([im for im in train['band_1']]).reshape(-1, 75, 75)
-band_2_tr = np.concatenate([im for im in train['band_2']]).reshape(-1, 75, 75)
-inc_angle_tr = np.nan_to_num(train['inc_angle'].values)
-inc_angle_tr = encoder.encode(inc_angle_tr)
-#inc_angle_tr = np.zeros(train['inc_angle'].values.shape)
-full_img_tr = np.stack([band_1_tr, band_2_tr], axis=1)
-
-band_1_val = np.concatenate([im for im in val['band_1']]).reshape(-1, 75, 75)
-band_2_val = np.concatenate([im for im in val['band_2']]).reshape(-1, 75, 75)
-inc_angle_val = np.nan_to_num(val['inc_angle'].values)
-inc_angle_val = encoder.encode(inc_angle_val)
-#inc_angle_val = np.zeros(val['inc_angle'].values.shape)
-full_img_val = np.stack([band_1_val, band_2_val], axis=1)
-
-del data
-
 # Augmentation
 affine_transforms = transforms.RandomAffine(rotation_range=None, translation_range=0.2, zoom_range=(0.8, 1.2))
 rand_flip = transforms.RandomFlip(h=True, v=False)
 std_normalize = transforms.StdNormalize()
+my_transforms = transforms.Compose([rand_flip, std_normalize])
+# scalar encoder for incident angles
+encoder = ScalarEncoder(100, 30, 45)
 
-my_transforms = transforms.Compose([affine_transforms, rand_flip, std_normalize])
-
-# Dataset and DataLoader
-train_imgs = torch.from_numpy(full_img_tr).float()
-train_angles = torch.from_numpy(inc_angle_tr).float()
-train_targets = torch.from_numpy(train['is_iceberg'].values).long()
-train_dataset_imgs = TensorDataset(train_imgs, train_targets, input_transform=my_transforms)
-train_dataset_angles = TensorDataset(train_angles, None)
-train_dataset = MultiDataset((train_dataset_imgs, train_dataset_angles))
-
-val_imgs = torch.from_numpy(full_img_val).float()
-val_angles = torch.from_numpy(inc_angle_val).float()
-val_targets = torch.from_numpy(val['is_iceberg'].values).long()
-val_dataset_img = TensorDataset(val_imgs, val_targets, input_transform=my_transforms)
-val_dataset_angles = TensorDataset(val_angles, None)
-val_dataset = MultiDataset((val_dataset_img, val_dataset_angles))
+train_dataset = make_dataset(train, encoder, my_transforms)
+val_dataset = make_dataset(val, encoder, my_transforms)
 
 net = Net()
-
-
-img_size = (75, 75)
-img_ch = 2
-kernel_size = 3
-pool_size = 2
-n_out = 1
-#net = CNNClassifier(img_size=img_size, img_ch=img_ch, kernel_size=kernel_size, pool_size=pool_size, n_out=n_out)
-
+# net = CNNClassifier(img_size=(75, 75), img_ch=2, kernel_size=3, pool_size=2, n_out=1)
 net.cuda()
 
 # Train
-criterion = nn.BCEWithLogitsLoss()
-val_criterion = nn.BCELoss()
-optimizer = Adam(net.parameters(), lr=0.001)
+criterion = torch.nn.BCEWithLogitsLoss()
+val_criterion = torch.nn.BCELoss()
+optimizer = Adam(net.parameters(), lr=0.001, weight_decay=0.001)
 logger = Logger('./logs')
-
-# utils
-class AverageMeter(object):
-    """Computes and stores the average and current value"""
-
-    def __init__(self, window_size=None):
-        self.length = 0
-        self.val = 0
-        self.avg = 0
-        self.sum = 0
-        self.count = 0
-        self.window_size = window_size
-
-    def reset(self):
-        self.length = 0
-        self.val = 0
-        self.avg = 0
-        self.sum = 0
-        self.count = 0
-
-    def update(self, val, n=1):
-        if self.window_size and (self.count >= self.window_size):
-            self.reset()
-        self.val = val
-        self.sum += val * n
-        self.count += n
-        self.avg = self.sum / self.count
-
-
-def accuracy(y_true, y_pred):
-    #y_true = y_true.float()
-    #_, y_pred = torch.max(y_pred, dim=-1)
-    y_pred_decision = y_pred > 0.5
-    return (y_pred_decision.float() == y_true.float()).float().mean()
 
 
 def fit(train, val, epochs, batch_size):
     # Set the logger
-    logger.text_log(str(net), "model_description.txt")
+    logger.text_log((str(net), str(optimizer), str(criterion)), "model_description.txt")
     print('train on {} images validate on {} images'.format(len(train), len(val)))
     net.train()
     train_loader = DataLoader(train, batch_size=batch_size, shuffle=True)
@@ -189,20 +74,26 @@ def fit(train, val, epochs, batch_size):
             optimizer.step()
         print("\n[ loss: {:.4f} | acc: {:.4f} ] ".format(running_loss.avg, running_accuracy.avg))
         for val_data_target in val_loader:
-            trials = 20  # number of times one sample is run through the model. This combined with dropout give you an idea about confidence of the model about its prediction.
+            trials = 10  # number of times one sample is run through the model. This combined with dropout give you an idea about confidence of the model about its prediction.
             current_batch_size = val_data_target[0][0].size()[0]  # Because last batch can have a different size
-            val_img_var, val_target_var = Variable(val_data_target[0][0].float().cuda()), Variable(val_data_target[0][1].float().cuda())
-            val_img_var = torch.stack([val_img_var] * trials, 1).view(current_batch_size*trials, 2, 75, 75)
+            # wrapping tensors in autograd variables
+            val_img_var = Variable(val_data_target[0][0].float().cuda())
+            val_target_var = Variable(val_data_target[0][1].float().cuda())
             val_angle_var = Variable(val_data_target[1].float().cuda())
-            val_angle_var = torch.stack([val_angle_var] * trials, 1).view(current_batch_size*trials, 100)
-            output_logits = torch.squeeze(net(val_img_var, val_angle_var))
+            # Forward pass
+            output_logits = torch.squeeze(net(val_img_var, val_angle_var, trials=trials))
             prob_out = torch.sigmoid(output_logits)
             prob_out = prob_out.view(current_batch_size, trials)
+            # Taking mean and std of trails for each sample
             prob_out_mean = torch.mean(prob_out, 1)
             prob_out_std = torch.std(prob_out, 1)
+            # Adjusting the mean probability of trials according to their std.
+            # As std increases, the ceiling is lowered and floor is raised.
+            # std=0 means floor and ceiling are untouched. std=0.5 floor and ceiling are both at 0.5
             prob_out_adjusted = (1 - 2 * prob_out_std)*(prob_out_mean - 0.5) + 0.5
-            prob_out_adjusted = torch.min(torch.max(prob_out_adjusted, Variable(torch.cuda.FloatTensor([0.05]))),
-                                          Variable(torch.cuda.FloatTensor([0.95])))
+            #prob_out_adjusted = torch.min(torch.max(prob_out_adjusted, Variable(torch.cuda.FloatTensor([0.05]))),
+            #                              Variable(torch.cuda.FloatTensor([0.95])))
+            # Recording loss and accuracy metrics for `logger`
             val_loss = val_criterion(prob_out[:, 0], val_target_var)
             val_loss_adjusted = val_criterion(prob_out_adjusted, val_target_var)
             val_acc = accuracy(val_target_var.data, prob_out[:, 0].data)
@@ -213,6 +104,7 @@ def fit(train, val, epochs, batch_size):
             val_acc_mean_meter.update(val_acc_mean)
         print("\n[Epoch: {:} loss: {:.4f} | acc: {:.4f} | vloss: {:.4f} | vadjloss: {:.4f} | vacc: {:.4f} | vacc_m: {:.4f} ] ".format(
             epoch, running_loss.avg, running_accuracy.avg, val_loss_meter.avg, val_loss_adjusted_meter.avg, val_acc_meter.avg, val_acc_mean_meter.avg))
+        # creating summaries for TensorBoard
         logger.scalar_summary("loss", running_loss.avg, epoch + 1)
         logger.scalar_summary("vloss", val_loss_meter.avg, epoch + 1)
         logger.scalar_summary("vloss-adjusted", val_loss_adjusted_meter.avg, epoch + 1)
@@ -220,20 +112,25 @@ def fit(train, val, epochs, batch_size):
         logger.scalar_summary("v-accuracy", val_acc_meter.avg, epoch + 1)
         logger.scalar_summary("v-accuracy-adjusted", val_acc_mean_meter.avg, epoch + 1)
 
-fit(train_dataset, val_dataset, 250, 32)
+fit(train_dataset, val_dataset, 300, 32)
 
 if run_infer:
+    print("Loading testset")
+    test_df = pd.read_json('test.json')
+    test_df['band_1'] = test_df['band_1'].apply(lambda x: np.array(x).reshape(75, 75))
+    test_df['band_2'] = test_df['band_2'].apply(lambda x: np.array(x).reshape(75, 75))
+    test_df['inc_angle'] = pd.to_numeric(test_df['inc_angle'], errors='coerce')
+    test_dataset = make_dataset(test_df, encoder, my_transforms, test=True)
+
     print('Running test data')
     test_loader = DataLoader(test_dataset, batch_size=1, shuffle=False)
     test_pred_mean = torch.FloatTensor()
     test_pred_std = torch.FloatTensor()
-    num_to_sample = 20
+    num_to_sample = 10
     for data_target in tqdm(test_loader, total=len(test_loader)):
         data_var_img = Variable(data_target[0][0].float().cuda())
         data_var_angle = Variable(data_target[1].float().cuda())
-        _data_dout_img = data_var_img.repeat(num_to_sample, 1, 1, 1)
-        _data_dout_angel = data_var_angle.repeat(num_to_sample, 1)
-        out_logits = net(_data_dout_img, _data_dout_angel).data
+        out_logits = net(data_var_img, data_var_angle, trials=num_to_sample).data
         out_guesses = torch.sigmoid(out_logits)
         out_mean = torch.mean(out_guesses)
         out_std = torch.std(out_guesses)
@@ -241,15 +138,16 @@ if run_infer:
         test_pred_std = torch.cat((test_pred_std, torch.FloatTensor([out_std])), 0)
 
     test_pred_std.squeeze_()
-    print(test_pred_std[0:20])
+    print(test_pred_std[0:10])  # to get a peek
     test_pred_mean.squeeze_()
-    prob_out_adjusted = torch.min(torch.max(test_pred_mean, torch.FloatTensor([0.05])), torch.FloatTensor([0.95]))
-    prob_out_adjusted = (1 - 2 * test_pred_std) * (prob_out_adjusted - 0.5) + 0.5
+    prob_out_adjusted = (1 - 2 * test_pred_std) * (test_pred_mean - 0.5) + 0.5
+    # prob_out_adjusted = torch.min(torch.max(test_pred_mean, torch.FloatTensor([0.05])), torch.FloatTensor([0.95]))
     pred_probability = prob_out_adjusted.cpu().numpy()
-    pred_df = pd.DataFrame(index=test.index)
-    pred_df['id'] = test['id']
-    pred_df['is_iceberg'] = pd.Series(pred_probability, index=test.index).astype(float)
-    pred_df['is_iceberg'] = pred_df['is_iceberg'].apply("{0:.5f}".format)
+    pred_df = pd.DataFrame(index=test_df.index)
+    pred_df['id'] = test_df['id']
+    pred_df['is_iceberg'] = pd.Series(pred_probability, index=test_df.index).astype(float)
+    # removing scientific notation because I'm not sure how Kaggle deasl with it.
+    pred_df['is_iceberg'] = pred_df['is_iceberg'].apply("{0:.9f}".format)
 
 
     pred_df.to_csv(os.path.join(logger.dir, 'submission_prob.csv'), encoding='utf-8', columns=['id', 'is_iceberg'], index=False)
