@@ -4,7 +4,7 @@ import torch
 from torch.autograd import Variable
 from torchsample import TensorDataset
 import os
-
+from models import Net
 
 class ScalarEncoder:
     """
@@ -97,6 +97,14 @@ class MultiDataset(dataset.Dataset):
 
 
 def make_dataset(df, scalar_encoder, transforms, test=False):
+    """
+    Does all the data manipulation and creates a dataset ready to be fed to the model
+    :param df: pandas daraframe
+    :param scalar_encoder: encoder to encode scalars
+    :param transforms: data transformations
+    :param test: indicate whether this a training/validation dataset or a test dataset
+    :return: dataset
+    """
     # Concat Bands into (N, 2, 75, 75) images
     band_1 = np.concatenate([im for im in df['band_1']]).reshape(-1, 75, 75)
     band_2 = np.concatenate([im for im in df['band_2']]).reshape(-1, 75, 75)
@@ -141,3 +149,22 @@ def save_model(networks, dir):
         os.makedirs(save_dir)
     for idx, net in enumerate(networks):
         torch.save(net.state_dict(), os.path.join(save_dir, "net" + str(idx)+".pth"))
+
+
+def load_model(dir):
+    networks = []
+    for filename in os.listdir(dir):
+        net = Net()
+        net.load_state_dict(torch.load(os.path.join(dir, filename)))
+        net.train(True)
+        net.cuda()
+        networks.append(net)
+    return networks
+
+
+def all_subdirs_of(b='.'):
+  result = []
+  for d in os.listdir(b):
+    bd = os.path.join(b, d)
+    if os.path.isdir(bd): result.append(bd)
+  return result

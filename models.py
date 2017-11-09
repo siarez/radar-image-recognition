@@ -24,21 +24,21 @@ class Net(nn.Module):
         self.dout4 = nn.Dropout(drop_p_fc)
         self.fc3 = nn.Linear(200, 1)
 
-    def forward(self, x, angel, trials=1):
+    def forward(self, x, angle, trials=1):
         if trials > 1:
             # repeating each sample `trials` times to get confidence intervals by applying dropout.
             self.train()  # model needs to be in training mode for dropout layers to work
             if len(x.size()) == 3:
                 x.data.unsqueeze_(0)
             x = torch.stack([x] * trials, 1).view(x.size()[0] * trials, 2, 75, 75)
-            angel = torch.stack([angel] * trials, 1).view(angel.size()[0] * trials, 100)
+            angle = torch.stack([angle] * trials, 1).view(angle.size()[0] * trials, 100)
 
         x = self.batch(x)
         x = self.pool(F.relu(self.dout0(torch.cat((self.conv00(x), self.conv01(x)), 1))))
         x = self.pool(F.relu(self.dout1(torch.cat((self.conv10(x), self.conv11(x)), 1))))
         x = self.pool(F.relu(self.dout2(self.conv2(x))))
         x = x.view(x.size(0), -1)
-        x = torch.cat((x, angel), 1)
+        x = torch.cat((x, angle), 1)
         x = F.leaky_relu(self.dout3(self.fc1(x)))
         x = F.leaky_relu(self.dout4(self.fc2(x)))
         x = self.fc3(x)
