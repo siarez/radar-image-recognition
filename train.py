@@ -7,22 +7,16 @@ from torch.utils.data import DataLoader
 from torchsample import transforms
 from tqdm import tqdm
 from models import Net
-from utils import ScalarEncoder, accuracy, AverageMeter, make_dataset, save_model, infer_ensemble
+from utils import ScalarEncoder, accuracy, AverageMeter, make_dataset, save_model, print_metrics
 from logger import Logger
 from sklearn.model_selection import KFold
 
 
-run_infer = True
-
-
-data = pd.read_json("train.json")
+data = pd.read_json("data/train.json")
 data["band_1"] = data["band_1"].apply(lambda x: np.array(x).reshape(75, 75))
 data["band_2"] = data["band_2"].apply(lambda x: np.array(x).reshape(75, 75))
 data["inc_angle"] = pd.to_numeric(data["inc_angle"], errors="coerce")
 
-
-#train = data.sample(frac=0.8)
-#val = data[~data.isin(train)].dropna()
 
 # Augmentation
 affine_transforms = transforms.RandomAffine(rotation_range=None, translation_range=0.1, zoom_range=(0.95, 1.05))
@@ -52,6 +46,15 @@ logger.text_log((str(networks), str(optimizers), str(criterion)), "model_descrip
 
 
 def fit(train, val, batch_size, net, optimizer):
+    """
+    Runs one epoch on the `net` using the `optimizer`
+    :param train: training dataset
+    :param val: validation dataset
+    :param batch_size: batch size
+    :param net: the model to train
+    :param optimizer: the optimizer to use on the model
+    :return: accuracy and loss performance metrics for training and validation 
+    """
     print("train on {} images validate on {} images".format(len(train), len(val)))
     net.train()
     train_loader = DataLoader(train, batch_size=batch_size, shuffle=True)
@@ -72,13 +75,15 @@ def fit(train, val, batch_size, net, optimizer):
         acc = accuracy(target_var.data, output.data)
         running_loss.update(loss.data[0])
         running_accuracy.update(acc)
-        # pbar.set_description("[ loss: {:.4f} | acc: {:.4f} ] ".format(running_loss.avg, running_accuracy.avg))
+        pbar.set_description("[ loss: {:.4f} | acc: {:.4f} ] ".format(running_loss.avg, running_accuracy.avg))
         optimizer.zero_grad()
         loss.backward()
         optimizer.step()
-    #print("\n[ loss: {:.4f} | acc: {:.4f} ] ".format(running_loss.avg, running_accuracy.avg))
+
     for val_data_target in val_loader:
-        trials = 10  # number of times one sample is run through the model. This combined with dropout give you an idea about confidence of the model about its prediction.
+        # `trials` is the number of times one sample is run through the model.
+        # This combined with dropout gives an idea about confidence of the model about its prediction.
+        trials = 10
         current_batch_size = val_data_target[0][0].size()[0]  # Because last batch can have a different size
         # wrapping tensors in autograd variables
         val_img_var = Variable(val_data_target[0][0].float().cuda())
@@ -95,8 +100,8 @@ def fit(train, val, batch_size, net, optimizer):
         # As std increases, the ceiling is lowered and floor is raised.
         # std=0 means floor and ceiling are untouched. std=0.5 floor and ceiling are both at 0.5
         prob_out_adjusted = (1 - 2 * prob_out_std)*(prob_out_mean - 0.5) + 0.5
-        #prob_out_adjusted = torch.min(torch.max(prob_out_adjusted, Variable(torch.cuda.FloatTensor([0.05]))),
-        #                              Variable(torch.cuda.FloatTensor([0.95])))
+        # prob_out_adjusted = torch.min(torch.max(prob_out_adjusted, Variable(torch.cuda.FloatTensor([0.01]))),
+        #                              Variable(torch.cuda.FloatTensor([0.99])))
         # Recording loss and accuracy metrics for `logger`
         val_loss = val_criterion(prob_out_mean, val_target_var)
         val_loss_adjusted = val_criterion(prob_out_adjusted, val_target_var)
@@ -106,8 +111,6 @@ def fit(train, val, batch_size, net, optimizer):
         val_loss_adjusted_meter.update(val_loss_adjusted.data[0])
         val_acc_meter.update(val_acc)
         val_acc_mean_meter.update(val_acc_mean)
-    #print("\n[Epoch: {:} loss: {:.4f} | acc: {:.4f} | vloss: {:.4f} | vadjloss: {:.4f} | vacc: {:.4f} | vacc_m: {:.4f} ] ".format(
-    #    epoch, running_loss.avg, running_accuracy.avg, val_loss_meter.avg, val_loss_adjusted_meter.avg, val_acc_meter.avg, val_acc_mean_meter.avg))
     return [running_loss.avg, running_accuracy.avg, val_loss_meter.avg, val_loss_adjusted_meter.avg,\
                val_acc_meter.avg, val_acc_mean_meter.avg]
 
@@ -118,10 +121,8 @@ for epoch in tqdm(range(150)):
     for i in range(len(networks)):
         metrics.append(fit(kfold_datasets[i]["train"], kfold_datasets[i]["val"], 32, networks[i], optimizers[i]))
     metrics_avg = np.mean(np.array(metrics), 0)
-
-    print("\n[Epoch: {:} loss: {:.4f} | acc: {:.4f} | vloss: {:.4f} | vadjloss: {:.4f} | vacc: {:.4f} | vacc_m: {:.4f} ] ".format(
-        epoch, metrics_avg[0], metrics_avg[1], metrics_avg[2], metrics_avg[3], metrics_avg[4], metrics_avg[5]))
-
+    print_metrics(metrics_avg)
+    # update patience for early stopping
     if prev_loss > metrics_avg[2]:
         prev_loss = metrics_avg[2]
         patience = min(patience + 1, 10)

@@ -126,14 +126,14 @@ def make_dataset(df, scalar_encoder, transforms, test=False):
     return dataset
 
 
-def infer_ensemble(data, network_list):
+def infer_ensemble(data, network_list, trial_per_sample):
     """Does a the forward pass for each network in the list `trial` number of times.
      Returns the avg and std of trials of all networks"""
     data_var_img = Variable(data[0][0].float().cuda())
     data_var_angle = Variable(data[1].float().cuda())
     networks_logits = []
     for net in network_list:
-        trial_outputs = net(data_var_img, data_var_angle, trials=10).data
+        trial_outputs = net(data_var_img, data_var_angle, trials=trial_per_sample).data
         networks_logits.append(trial_outputs)
     networks_logits = torch.stack(networks_logits, 1).squeeze_()
     probabilities = torch.sigmoid(networks_logits)
@@ -143,7 +143,8 @@ def infer_ensemble(data, network_list):
 
 
 def save_model(networks, dir):
-    """Saves all models in a list"""
+    """Saves all models in a list to the given directory.
+    It creates a subdirectory called "models" in `dir`"""
     save_dir = os.path.join(dir, "models")
     if not os.path.exists(save_dir):
         os.makedirs(save_dir)
@@ -152,6 +153,11 @@ def save_model(networks, dir):
 
 
 def load_model(dir):
+    """
+    Loads models 
+    :param dir: directory to load the models from
+    :return: a list of all the models in the directory
+    """
     networks = []
     for filename in os.listdir(dir):
         net = Net()
@@ -162,9 +168,16 @@ def load_model(dir):
     return networks
 
 
-def all_subdirs_of(b='.'):
-  result = []
-  for d in os.listdir(b):
-    bd = os.path.join(b, d)
-    if os.path.isdir(bd): result.append(bd)
-  return result
+def all_subdirs_of(dir='.'):
+    """returns the path list of all the subdirectories of the directory `dir`"""
+    result = []
+    for d in os.listdir(dir):
+        bd = os.path.join(dir, d)
+    if os.path.isdir(bd):
+        result.append(bd)
+    return result
+
+
+def print_metrics(epoch, metrics):
+    print("\n[Epoch: {:} loss: {:.4f} | acc: {:.4f} | vloss: {:.4f} | vadjloss: {:.4f} | vacc: {:.4f} | vacc_m: {:.4f} ] ".format(
+        epoch, metrics[0], metrics[1], metrics[2], metrics[3], metrics[4], metrics[5]))

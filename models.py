@@ -1,6 +1,6 @@
 import torch
 from torch import nn
-import torch.nn.functional as F
+import torch.nn.functional as func
 
 class Net(nn.Module):
     def __init__(self):
@@ -34,13 +34,13 @@ class Net(nn.Module):
             angle = torch.stack([angle] * trials, 1).view(angle.size()[0] * trials, 100)
 
         x = self.batch(x)
-        x = self.pool(F.relu(self.dout0(torch.cat((self.conv00(x), self.conv01(x)), 1))))
-        x = self.pool(F.relu(self.dout1(torch.cat((self.conv10(x), self.conv11(x)), 1))))
-        x = self.pool(F.relu(self.dout2(self.conv2(x))))
+        x = self.pool(func.relu(self.dout0(torch.cat((self.conv00(x), self.conv01(x)), 1))))
+        x = self.pool(func.relu(self.dout1(torch.cat((self.conv10(x), self.conv11(x)), 1))))
+        x = self.pool(func.relu(self.dout2(self.conv2(x))))
         x = x.view(x.size(0), -1)
         x = torch.cat((x, angle), 1)
-        x = F.leaky_relu(self.dout3(self.fc1(x)))
-        x = F.leaky_relu(self.dout4(self.fc2(x)))
+        x = func.leaky_relu(self.dout3(self.fc1(x)))
+        x = func.leaky_relu(self.dout4(self.fc2(x)))
         x = self.fc3(x)
         return x
 
