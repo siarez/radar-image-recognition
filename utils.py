@@ -1,7 +1,9 @@
 import numpy as np
 from torch.utils.data import dataset
 import torch
+from torch.autograd import Variable
 from torchsample import TensorDataset
+import os
 
 
 class ScalarEncoder:
@@ -114,3 +116,28 @@ def make_dataset(df, scalar_encoder, transforms, test=False):
     dataset_angles = TensorDataset(angles, None)
     dataset = MultiDataset((dataset_imgs, dataset_angles))
     return dataset
+
+
+def infer_ensemble(data, network_list):
+    """Does a the forward pass for each network in the list `trial` number of times.
+     Returns the avg and std of trials of all networks"""
+    data_var_img = Variable(data[0][0].float().cuda())
+    data_var_angle = Variable(data[1].float().cuda())
+    networks_logits = []
+    for net in network_list:
+        trial_outputs = net(data_var_img, data_var_angle, trials=10).data
+        networks_logits.append(trial_outputs)
+    networks_logits = torch.stack(networks_logits, 1).squeeze_()
+    probabilities = torch.sigmoid(networks_logits)
+    pred_mean = torch.mean(probabilities)
+    pred_std = torch.std(probabilities)
+    return pred_mean, pred_std
+
+
+def save_model(networks, dir):
+    """Saves all models in a list"""
+    save_dir = os.path.join(dir, "models")
+    if not os.path.exists(save_dir):
+        os.makedirs(save_dir)
+    for idx, net in enumerate(networks):
+        torch.save(net.state_dict(), os.path.join(save_dir, "net" + str(idx)+".pth"))
