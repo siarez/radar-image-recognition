@@ -36,7 +36,7 @@ for train_index, val_index in kf.split(data):
     kfold_datasets.append({"train": train_dataset, "val": val_dataset})
     # A new net for each train-validation dataset
     networks.append(Net().cuda())
-    optimizers.append(Adam(networks[-1].parameters(), lr=0.001, weight_decay=0.001))
+    optimizers.append(Adam(networks[-1].parameters(), lr=0.0005, weight_decay=0.0002))
 
 # Train
 criterion = torch.nn.BCEWithLogitsLoss()
@@ -115,17 +115,17 @@ def fit(train, val, batch_size, net, optimizer):
                val_acc_meter.avg, val_acc_mean_meter.avg]
 
 prev_loss = 10
-patience = 15
+patience = 20
 for epoch in tqdm(range(150)):
     metrics = []
     for i in range(len(networks)):
         metrics.append(fit(kfold_datasets[i]["train"], kfold_datasets[i]["val"], 32, networks[i], optimizers[i]))
     metrics_avg = np.mean(np.array(metrics), 0)
-    print_metrics(metrics_avg)
+    print_metrics(epoch+1, metrics_avg)
     # update patience for early stopping
-    if prev_loss > metrics_avg[2]:
-        prev_loss = metrics_avg[2]
-        patience = min(patience + 1, 10)
+    if prev_loss > metrics_avg[3]:
+        prev_loss = metrics_avg[3]
+        patience = min(patience + 1, 20)
     else:
         patience -= 1
     print("Patience: ", patience)

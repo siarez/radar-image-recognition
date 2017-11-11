@@ -12,6 +12,7 @@ all_subdirs = all_subdirs_of("./logs")
 latest_subdir = max(all_subdirs, key=os.path.getmtime)
 print("loading model from: " + latest_subdir)
 networks = load_model(os.path.join(latest_subdir, "models"))
+# networks = load_model(os.path.join("logs/2017-11-09-15-56-29", "models"))
 # scalar encoder for incident angles
 encoder = ScalarEncoder(100, 30, 45)
 

@@ -173,8 +173,8 @@ def all_subdirs_of(dir='.'):
     result = []
     for d in os.listdir(dir):
         bd = os.path.join(dir, d)
-    if os.path.isdir(bd):
-        result.append(bd)
+        if os.path.isdir(bd):
+            result.append(bd)
     return result
 
 
