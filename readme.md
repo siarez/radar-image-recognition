@@ -10,5 +10,7 @@ It also saves model checkpoints, model description, and a log for viewing in Ten
 These are saved in a separate timestamped folder for each run to make it easier to keep track of experiments.
 
 3. **test.py** loads and prepares test data. It then loads the model from the latest checkpoint created by *train.py* and iterates through the test data.
+Inspired by [the work of Yarin Gal](http://mlg.eng.cam.ac.uk/yarin/blog_2248.html), I used drop-out during inference to create a confidence interval around each prediction.
+This confidence interval is treated as a measure of certainty of the model in its prediction, and it is used to adjust the predictions to achieve lower log-loss.
 Finally, it creates a CSV file ready to be submitted to Kaggle.
 
